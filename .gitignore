@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Database (auto-created on first run)
+data/
+
+# Uploads (user files)
+uploads/
+
+# Environment (contains secrets)
+.env
+
+# Logs & OS
+*.log
+.DS_Store
+/tmp/
+
+# Build artifacts
+*.db
+*.db-journal

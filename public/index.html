@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TrackPro - Système de Suivi des Livraisons</title>
+  <meta name="description" content="Application complète de suivi des livraisons - Tracking en temps réel, gestion des colis, livreurs et tableau de bord">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- LOGIN PAGE -->
+  <div id="login-page" class="login-page">
+    <div class="login-bg">
+      <div class="login-blob blob1"></div>
+      <div class="login-blob blob2"></div>
+    </div>
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="logo-icon"><i class="fas fa-truck-fast"></i></div>
+        <h1>TrackPro</h1>
+        <p>Système de Suivi des Livraisons</p>
+      </div>
+      <form id="login-form">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="login-email" value="admin@tracking.com" placeholder="admin@tracking.com" required>
+        </div>
+        <div class="form-group">
+          <label>Mot de passe</label>
+          <input type="password" id="login-password" value="admin123" placeholder="••••••••" required>
+        </div>
+        <div id="login-error" class="error-msg"></div>
+        <button type="submit" class="btn btn-primary btn-full" id="login-btn">
+          <span>Se connecter</span>
+        </button>
+      </form>
+      <div class="login-hint">
+        <small>Admin: admin@tracking.com / admin123<br>Agent: agent@tracking.com / agent123</small>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="app" class="app hidden">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">
+          <span class="logo-icon"><i class="fas fa-truck-fast"></i></span>
+          <span class="logo-text">TrackPro</span>
+        </div>
+        <button class="sidebar-toggle" id="sidebar-toggle"><i class="fas fa-bars"></i></button>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" data-page="dashboard" id="nav-dashboard">
+          <span class="nav-icon"><i class="fas fa-chart-line"></i></span><span class="nav-text">Tableau de bord</span>
+        </a>
+        <a href="#" class="nav-item" data-page="colis" id="nav-colis">
+          <span class="nav-icon"><i class="fas fa-box"></i></span><span class="nav-text">Colis</span>
+        </a>
+        <a href="#" class="nav-item" data-page="livraisons" id="nav-livraisons">
+          <span class="nav-icon"><i class="fas fa-truck"></i></span><span class="nav-text">Livraisons</span>
+        </a>
+        <a href="#" class="nav-item" data-page="livreurs" id="nav-livreurs">
+          <span class="nav-icon"><i class="fas fa-user-tie"></i></span><span class="nav-text">Livreurs</span>
+        </a>
+        <a href="#" class="nav-item" data-page="map" id="nav-map">
+          <span class="nav-icon"><i class="fas fa-map-location-dot"></i></span><span class="nav-text">Géolocalisation</span>
+        </a>
+        <a href="#" class="nav-item" data-page="tracking" id="nav-tracking">
+          <span class="nav-icon"><i class="fas fa-magnifying-glass-location"></i></span><span class="nav-text">Tracking Public</span>
+        </a>
+        <a href="#" class="nav-item" data-page="notifications" id="nav-notifications">
+          <span class="nav-icon"><i class="fas fa-bell"></i></span><span class="nav-text">Notifications</span>
+          <span class="badge" id="notif-badge">0</span>
+        </a>
+        <a href="#" class="nav-item" data-page="incidents" id="nav-incidents">
+          <span class="nav-icon"><i class="fas fa-triangle-exclamation"></i></span><span class="nav-text">Incidents</span>
+        </a>
+        <a href="#" class="nav-item" data-page="reports" id="nav-reports">
+          <span class="nav-icon"><i class="fas fa-chart-bar"></i></span><span class="nav-text">Rapports</span>
+        </a>
+        <a href="#" class="nav-item admin-only" data-page="users" id="nav-users">
+          <span class="nav-icon"><i class="fas fa-users"></i></span><span class="nav-text">Utilisateurs</span>
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-info">
+          <div class="user-avatar" id="user-avatar">A</div>
+          <div class="user-details">
+            <div class="user-name" id="user-name">Admin</div>
+            <div class="user-role" id="user-role">Administrateur</div>
+          </div>
+        </div>
+        <button class="btn-logout" id="logout-btn" title="Déconnexion"><i class="fas fa-power-off"></i></button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content" id="main-content">
+      <!-- DASHBOARD PAGE -->
+      <div class="page active" id="page-dashboard">
+        <div class="page-header">
+          <h2>Tableau de bord</h2>
+          <button class="btn btn-primary" onclick="loadDashboard()"><i class="fas fa-rotate"></i> Actualiser</button>
+        </div>
+        <div class="stats-grid" id="stats-grid">
+          <div class="stat-card stat-blue"><div class="stat-icon"><i class="fas fa-box"></i></div><div class="stat-info"><div class="stat-val" id="stat-total">—</div><div class="stat-label">Total Colis</div></div></div>
+          <div class="stat-card stat-orange"><div class="stat-icon"><i class="fas fa-clock"></i></div><div class="stat-info"><div class="stat-val" id="stat-attente">—</div><div class="stat-label">En attente</div></div></div>
+          <div class="stat-card stat-purple"><div class="stat-icon"><i class="fas fa-truck"></i></div><div class="stat-info"><div class="stat-val" id="stat-cours">—</div><div class="stat-label">En cours</div></div></div>
+          <div class="stat-card stat-green"><div class="stat-icon"><i class="fas fa-circle-check"></i></div><div class="stat-info"><div class="stat-val" id="stat-livres">—</div><div class="stat-label">Livrés</div></div></div>
+          <div class="stat-card stat-red"><div class="stat-icon"><i class="fas fa-circle-xmark"></i></div><div class="stat-info"><div class="stat-val" id="stat-echecs">—</div><div class="stat-label">Échecs</div></div></div>
+          <div class="stat-card stat-teal"><div class="stat-icon"><i class="fas fa-chart-line"></i></div><div class="stat-info"><div class="stat-val" id="stat-taux">—%</div><div class="stat-label">Taux livraison</div></div></div>
+        </div>
+        <div class="charts-grid">
+          <div class="chart-card">
+            <h3>Évolution des livraisons (14 jours)</h3>
+            <canvas id="chart-daily" height="100"></canvas>
+          </div>
+          <div class="chart-card">
+            <h3>Répartition par statut</h3>
+            <canvas id="chart-statut" height="100"></canvas>
+          </div>
+        </div>
+        <div class="dashboard-bottom">
+          <div class="card">
+            <div class="card-header">
+              <h3>Colis récents</h3>
+              <button class="btn btn-sm" onclick="navigate('colis')">Voir tout</button>
+            </div>
+            <div class="table-wrap">
+              <table class="table" id="recent-colis-table">
+                <thead><tr><th>Numéro</th><th>Statut</th><th>Destinataire</th><th>Ville</th><th>Date</th></tr></thead>
+                <tbody id="recent-colis-body"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3><i class="fas fa-triangle-exclamation" style="color:var(--warning)"></i> Retards détectés</h3></div>
+            <div id="retards-list" class="retards-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- COLIS PAGE -->
+      <div class="page" id="page-colis">
+        <div class="page-header">
+          <h2>Gestion des Colis</h2>
+          <button class="btn btn-primary" onclick="openColisModal()"><i class="fas fa-plus"></i> Nouveau colis</button>
+        </div>
+        <div class="filters-bar">
+          <input type="text" id="colis-search" placeholder="Rechercher par numéro, nom..." oninput="debounce(loadColis, 400)()">
+          <select id="colis-statut-filter" onchange="loadColis()">
+            <option value="">Tous les statuts</option>
+            <option value="enregistre">Enregistré</option>
+            <option value="en_transit">En transit</option>
+            <option value="en_livraison">En livraison</option>
+            <option value="livre">Livré</option>
+            <option value="echec">Échec</option>
+            <option value="retour">Retour</option>
+            <option value="perdu">Perdu</option>
+          </select>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table class="table" id="colis-table">
+              <thead><tr><th>Numéro de suivi</th><th>Type</th><th>Expéditeur</th><th>Destinataire</th><th>Statut</th><th>Type livraison</th><th>Date</th><th>Actions</th></tr></thead>
+              <tbody id="colis-tbody"></tbody>
+            </table>
+          </div>
+          <div class="pagination" id="colis-pagination"></div>
+        </div>
+      </div>
+
+      <!-- LIVRAISONS PAGE -->
+      <div class="page" id="page-livraisons">
+        <div class="page-header">
+          <h2>Gestion des Livraisons</h2>
+          <button class="btn btn-primary" onclick="openLivraisonModal()"><i class="fas fa-plus"></i> Affecter livraison</button>
+        </div>
+        <div class="filters-bar">
+          <select id="liv-statut-filter" onchange="loadLivraisons()">
+            <option value="">Tous les statuts</option>
+            <option value="planifiee">Planifiée</option>
+            <option value="en_cours">En cours</option>
+            <option value="livree">Livrée</option>
+            <option value="echec">Échec</option>
+          </select>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>Numéro colis</th><th>Livreur</th><th>Destinataire</th><th>Statut</th><th>Date planifiée</th><th>Actions</th></tr></thead>
+              <tbody id="livraisons-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- LIVREURS PAGE -->
+      <div class="page" id="page-livreurs">
+        <div class="page-header">
+          <h2>Gestion des Livreurs</h2>
+          <button class="btn btn-primary" onclick="openLivreurModal()"><i class="fas fa-plus"></i> Nouveau livreur</button>
+        </div>
+        <div class="livreurs-grid" id="livreurs-grid"></div>
+      </div>
+
+      <!-- MAP PAGE -->
+      <div class="page" id="page-map">
+        <div class="page-header">
+          <h2><i class="fas fa-map-location-dot"></i> Géolocalisation en temps réel</h2>
+          <button class="btn btn-primary" onclick="simulatePositions()"><i class="fas fa-play"></i> Simuler déplacement</button>
+        </div>
+        <div class="map-layout">
+          <div id="map" style="height:500px; border-radius:12px;"></div>
+          <div class="map-legend">
+            <h3>Livreurs actifs</h3>
+            <div id="livreurs-map-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TRACKING PUBLIC PAGE -->
+      <div class="page" id="page-tracking">
+        <div class="page-header"><h2><i class="fas fa-magnifying-glass-location"></i> Suivi de colis</h2></div>
+        <div class="tracking-search-card">
+          <h3>Entrez votre numéro de suivi</h3>
+          <div class="tracking-input-row">
+            <input type="text" id="tracking-input" placeholder="Ex: TRK-20240301-00001" class="tracking-input">
+            <button class="btn btn-primary btn-lg" onclick="searchTracking()">Suivre</button>
+          </div>
+          <div class="tracking-examples">
+            <span>Exemples: </span>
+            <code onclick="document.getElementById('tracking-input').value=this.innerText;searchTracking()">TRK-20240301-00001</code>
+            <code onclick="document.getElementById('tracking-input').value=this.innerText;searchTracking()">TRK-20240303-00003</code>
+          </div>
+        </div>
+        <div id="tracking-result" class="tracking-result hidden"></div>
+      </div>
+
+      <!-- NOTIFICATIONS PAGE -->
+      <div class="page" id="page-notifications">
+        <div class="page-header"><h2><i class="fas fa-bell"></i> Notifications</h2></div>
+        <div class="card">
+          <div id="notifications-list" class="notifications-list"></div>
+        </div>
+      </div>
+
+      <!-- INCIDENTS PAGE -->
+      <div class="page" id="page-incidents">
+        <div class="page-header">
+          <h2><i class="fas fa-triangle-exclamation"></i> Gestion des Incidents</h2>
+          <button class="btn btn-danger" onclick="openIncidentModal()"><i class="fas fa-plus"></i> Signaler incident</button>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>Colis</th><th>Type</th><th>Description</th><th>Statut</th><th>Date</th><th>Actions</th></tr></thead>
+              <tbody id="incidents-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- REPORTS PAGE -->
+      <div class="page" id="page-reports">
+        <div class="page-header"><h2>📈 Rapports & Statistiques</h2></div>
+        <div class="reports-filters card">
+          <div class="filters-row">
+            <div class="form-group">
+              <label>Date début</label>
+              <input type="date" id="report-from" value="">
+            </div>
+            <div class="form-group">
+              <label>Date fin</label>
+              <input type="date" id="report-to" value="">
+            </div>
+            <button class="btn btn-primary" onclick="loadReports()">📊 Générer</button>
+            <button class="btn btn-success" onclick="exportCSV()">⬇️ Export CSV</button>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h3>Performance mensuelle (6 mois)</h3>
+          <canvas id="chart-monthly" height="80"></canvas>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Performance des Livreurs</h3></div>
+          <div class="table-wrap">
+            <table class="table"><thead><tr><th>Livreur</th><th>Total</th><th>Livrées</th><th>Échecs</th><th>Taux réussite</th><th>Temps moyen</th></tr></thead>
+              <tbody id="livreurs-perf-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- USERS PAGE -->
+      <div class="page" id="page-users">
+        <div class="page-header">
+          <h2><i class="fas fa-users"></i> Gestion des Utilisateurs</h2>
+          <button class="btn btn-primary" onclick="openUserModal()"><i class="fas fa-plus"></i> Nouvel utilisateur</button>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table class="table"><thead><tr><th>Nom</th><th>Email</th><th>Rôle</th><th>Téléphone</th><th>Statut</th><th>Actions</th></tr></thead>
+              <tbody id="users-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- MODALS -->
+  <div id="modal-overlay" class="modal-overlay hidden" onclick="closeModal(event)">
+    <!-- Colis Modal -->
+    <div class="modal" id="modal-colis">
+      <div class="modal-header">
+        <h3 id="colis-modal-title">Nouveau Colis</h3>
+        <button class="modal-close" onclick="closeAllModals()">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="colis-form">
+          <div class="form-section">
+            <h4><i class="fas fa-box"></i> Informations du colis</h4>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Type de colis</label>
+                <select id="f-type-colis" name="type_colis">
+                  <option value="paquet">Paquet</option>
+                  <option value="document">Document</option>
+                  <option value="fragile">Fragile</option>
+                  <option value="volumineux">Volumineux</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Type de livraison</label>
+                <select id="f-type-livraison" name="type_livraison">
+                  <option value="standard">Standard</option>
+                  <option value="express">Express</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Poids (kg)</label>
+                <input type="number" id="f-poids" step="0.1" placeholder="0.5">
+              </div>
+              <div class="form-group">
+                <label>Valeur déclarée (€)</label>
+                <input type="number" id="f-valeur" step="0.01" placeholder="0.00">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Description</label>
+              <textarea id="f-description" placeholder="Description du contenu..." rows="2"></textarea>
+            </div>
+            <div class="form-group">
+              <label>Notes</label>
+              <textarea id="f-notes" placeholder="Instructions spéciales..." rows="2"></textarea>
+            </div>
+          </div>
+          <div class="form-section">
+            <h4><i class="fas fa-upload"></i> Expéditeur</h4>
+            <div class="form-row">
+              <div class="form-group"><label>Nom *</label><input type="text" id="f-exp-nom" required placeholder="Nom expéditeur"></div>
+              <div class="form-group"><label>Téléphone *</label><input type="text" id="f-exp-tel" required placeholder="+33..."></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>Email</label><input type="email" id="f-exp-email" placeholder="email@..."></div>
+              <div class="form-group"><label>Ville</label><input type="text" id="f-exp-ville" placeholder="Ville"></div>
+            </div>
+            <div class="form-group"><label>Adresse *</label><input type="text" id="f-exp-adresse" required placeholder="Adresse complète"></div>
+          </div>
+          <div class="form-section">
+            <h4><i class="fas fa-download"></i> Destinataire</h4>
+            <div class="form-row">
+              <div class="form-group"><label>Nom *</label><input type="text" id="f-dest-nom" required placeholder="Nom destinataire"></div>
+              <div class="form-group"><label>Téléphone *</label><input type="text" id="f-dest-tel" required placeholder="+33..."></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>Email</label><input type="email" id="f-dest-email" placeholder="email@..."></div>
+              <div class="form-group"><label>Ville</label><input type="text" id="f-dest-ville" placeholder="Ville"></div>
+            </div>
+            <div class="form-group"><label>Adresse *</label><input type="text" id="f-dest-adresse" required placeholder="Adresse complète"></div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeAllModals()">Annuler</button>
+        <button class="btn btn-primary" onclick="saveColis()"><i class="fas fa-floppy-disk"></i> Enregistrer</button>
+      </div>
+    </div>
+
+    <!-- Statut Update Modal -->
+    <div class="modal" id="modal-statut">
+      <div class="modal-header">
+        <h3>Mettre à jour le statut</h3>
+        <button class="modal-close" onclick="closeAllModals()">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="statut-colis-id">
+        <div class="form-group">
+          <label>Nouveau statut</label>
+          <select id="f-new-statut">
+            <option value="enregistre">Enregistré</option>
+            <option value="en_transit">En transit</option>
+            <option value="en_livraison">En livraison</option>
+            <option value="livre">Livré</option>
+            <option value="echec">Échec</option>
+            <option value="retour">Retour</option>
+            <option value="perdu">Perdu</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <input type="text" id="f-statut-desc" placeholder="Description de l'événement">
+        </div>
+        <div class="form-group">
+          <label>Localisation</label>
+          <input type="text" id="f-statut-loc" placeholder="Lieu (ville, entrepôt...)">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeAllModals()">Annuler</button>
+        <button class="btn btn-primary" onclick="updateStatut()"><i class="fas fa-circle-check"></i> Mettre à jour</button>
+      </div>
+    </div>
+
+    <!-- Livraison Modal -->
+    <div class="modal" id="modal-livraison">
+      <div class="modal-header">
+        <h3>Affecter une livraison</h3>
+        <button class="modal-close" onclick="closeAllModals()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Colis (numéro de suivi)</label>
+          <select id="f-liv-colis"></select>
+        </div>
+        <div class="form-group">
+          <label>Livreur</label>
+          <select id="f-liv-livreur">
+            <option value="">— Non affecté —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Date planifiée</label>
+          <input type="datetime-local" id="f-liv-date">
+        </div>
+        <div class="form-group">
+          <label>Adresse de livraison</label>
+          <input type="text" id="f-liv-adresse" placeholder="Adresse de livraison">
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="f-liv-notes" rows="2" placeholder="Instructions..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeAllModals()">Annuler</button>
+        <button class="btn btn-primary" onclick="saveLivraison()"><i class="fas fa-floppy-disk"></i> Affecter</button>
+      </div>
+    </div>
+
+    <!-- Livreur Modal -->
+    <div class="modal" id="modal-livreur">
+      <div class="modal-header">
+        <h3 id="livreur-modal-title">Nouveau Livreur</h3>
+        <button class="modal-close" onclick="closeAllModals()">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="f-livreur-id">
+        <div class="form-row">
+          <div class="form-group"><label>Nom *</label><input type="text" id="f-livreur-nom" required placeholder="Nom complet"></div>
+          <div class="form-group"><label>Téléphone *</label><input type="text" id="f-livreur-tel" required placeholder="+33..."></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Email</label><input type="email" id="f-livreur-email" placeholder="email@..."></div>
+          <div class="form-group"><label>Véhicule</label><input type="text" id="f-livreur-vehicule" placeholder="Camionnette, Vélo..."></div>
+        </div>
+        <div class="form-group">
+          <label>Statut</label>
+          <select id="f-livreur-statut">
+            <option value="disponible">Disponible</option>
+            <option value="en_livraison">En livraison</option>
+            <option value="inactif">Inactif</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeAllModals()">Annuler</button>
+        <button class="btn btn-primary" onclick="saveLivreur()"><i class="fas fa-floppy-disk"></i> Enregistrer</button>
+      </div>
+    </div>
+
+    <!-- Validation Modal -->
+    <div class="modal" id="modal-validation">
+      <div class="modal-header">
+        <h3><i class="fas fa-circle-check"></i> Validation de livraison</h3>
+        <button class="modal-close" onclick="closeAllModals()">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="f-valid-livraison-id">
+        <div class="form-group">
+          <label>Nom du réceptionnaire</label>
+          <input type="text" id="f-valid-nom" placeholder="Nom de la personne qui reçoit">
+        </div>
+        <div class="form-group">
+          <label>Signature (texte)</label>
+          <input type="text" id="f-valid-signature" placeholder="Nom et prénom comme signature">
+        </div>
+        <div class="form-group">
+          <label>Code OTP de vérification</label>
+          <div class="otp-row">
+            <input type="text" id="f-valid-otp" placeholder="Code à 6 chiffres" maxlength="6">
+            <button class="btn btn-sm btn-ghost" type="button" onclick="generateOTP()">Générer OTP</button>
+          </div>
+          <small id="otp-hint" class="hint-text"></small>
+        </div>
+        <div class="form-group">
+          <label>Photo preuve de livraison</label>
+          <input type="file" id="f-valid-photo" accept="image/*">
+        </div>
+        <div class="form-group">
+          <label>Image signature</label>
+          <input type="file" id="f-valid-sig-img" accept="image/*">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeAllModals()">Annuler</button>
+        <button class="btn btn-success" onclick="submitValidation()"><i class="fas fa-circle-check"></i> Confirmer livraison</button>
+      </div>
+    </div>
+
+    <!-- Incident Modal -->
+    <div class="modal" id="modal-incident">
+      <div class="modal-header">
+        <h3><i class="fas fa-triangle-exclamation"></i> Signaler un incident</h3>
+        <button class="modal-close" onclick="closeAllModals()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Colis concerné (numéro de suivi)</label>
+          <select id="f-inc-colis"></select>
+        </div>
+        <div class="form-group">
+          <label>Type d'incident</label>
+          <select id="f-inc-type">
+            <option value="echec_livraison">Échec de livraison</option>
+            <option value="perdu">Colis perdu</option>
+            <option value="retour">Retour à l'expéditeur</option>
+            <option value="endommage">Colis endommagé</option>
+            <option value="autre">Autre</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Description *</label>
+          <textarea id="f-inc-desc" rows="3" required placeholder="Décrivez l'incident en détail..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeAllModals()">Annuler</button>
+        <button class="btn btn-danger" onclick="saveIncident()"><i class="fas fa-flag"></i> Signaler</button>
+      </div>
+    </div>
+
+    <!-- User Modal -->
+    <div class="modal" id="modal-user">
+      <div class="modal-header">
+        <h3>Nouvel utilisateur</h3>
+        <button class="modal-close" onclick="closeAllModals()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group"><label>Nom *</label><input type="text" id="f-user-nom" required></div>
+          <div class="form-group"><label>Email *</label><input type="email" id="f-user-email" required></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Mot de passe *</label><input type="password" id="f-user-password" required placeholder="Minimum 6 caractères"></div>
+          <div class="form-group"><label>Téléphone</label><input type="text" id="f-user-tel"></div>
+        </div>
+        <div class="form-group">
+          <label>Rôle</label>
+          <select id="f-user-role">
+            <option value="agent">Agent</option>
+            <option value="admin">Administrateur</option>
+            <option value="client">Client</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeAllModals()">Annuler</button>
+        <button class="btn btn-primary" onclick="saveUser()"><i class="fas fa-user-plus"></i> Créer</button>
+      </div>
+    </div>
+
+    <!-- Colis Detail Modal -->
+    <div class="modal modal-lg" id="modal-colis-detail">
+      <div class="modal-header">
+        <h3 id="detail-title">Détail du colis</h3>
+        <button class="modal-close" onclick="closeAllModals()">✕</button>
+      </div>
+      <div class="modal-body" id="colis-detail-body"></div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeAllModals()">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
