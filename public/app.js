@@ -28,7 +28,14 @@ const headers = (extra = {}) => ({
 });
 
 async function apiFetch(path, opts = {}) {
-  const r = await fetch(`${API}${path}`, {
+  let targetPath = path;
+  if(targetPath.startsWith('/')) targetPath = targetPath.substring(1);
+  const parts = targetPath.split(/([/?])/);
+  const resource = parts[0];
+  const rest = targetPath.substring(resource.length);
+  const finalPath = `${API}/${resource}.php${rest}`;
+
+  const r = await fetch(finalPath, {
     headers: headers(),
     ...opts,
     ...(opts.body && typeof opts.body === 'object' && !(opts.body instanceof FormData) ? {
@@ -84,7 +91,7 @@ $('login-form').addEventListener('submit', async e => {
   const email = $('login-email').value;
   const password = $('login-password').value;
   try {
-    const r = await fetch(`${API}/auth/login`, {
+    const r = await fetch(`${API}/auth.php?action=login`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
     });
@@ -107,7 +114,7 @@ function logout() {
   token = null; currentUser = null;
   localStorage.removeItem('token');
   localStorage.removeItem('user');
-  if (socket) socket.disconnect();
+  if (window.pollingInterval) clearInterval(window.pollingInterval);
   $('app').classList.add('hidden');
   $('login-page').classList.remove('hidden');
 }
@@ -130,11 +137,13 @@ function initApp() {
     document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
   }
 
-  // Setup socket
-  socket = io();
-  socket.on('position_update', data => {
-    updateMapMarker(data.livreur_id, data.latitude, data.longitude);
-  });
+  // Map Polling (remplace Socket.io)
+  if (window.pollingInterval) clearInterval(window.pollingInterval);
+  window.pollingInterval = setInterval(async () => {
+    if ($('page-map').classList.contains('active')) {
+      await loadLivreursOnMap();
+    }
+  }, 5000);
 
   // Sidebar toggle
   $('sidebar-toggle').addEventListener('click', () => {
@@ -527,7 +536,7 @@ async function submitValidation() {
   if ($('f-valid-photo').files[0]) fd.append('photo_preuve', $('f-valid-photo').files[0]);
   if ($('f-valid-sig-img').files[0]) fd.append('signature_image', $('f-valid-sig-img').files[0]);
 
-  const r = await fetch(`${API}/validation/${livraisonId}`, {
+  const r = await fetch(`${API}/validation.php/${livraisonId}/validate`, {
     method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd
   });
   const data = await r.json();
@@ -734,8 +743,7 @@ async function searchTracking() {
     </div>
   `;
 
-  // Also join socket room for real-time updates
-  if (socket) socket.emit('track_colis', numero);
+  // Polling géré nativement via /api/colis.php/track
 }
 
 // ── NOTIFICATIONS ─────────────────────────────────────
