@@ -58,10 +58,8 @@ trackpro-livraison/
 │
 ├── data/                 # 🗄️ Dossier de base de données (auto-créé)
 │
-├── public/               # 🌐 Fichiers Frontend
-│   ├── app.js            # Logique SPA (JavaScript Vanilla)
-│   ├── style.css         # Thème Premium
-│   └── index.html        # Point d'entrée Frontend
-│
+├── index.html        # 🌐 Point d'entrée Frontend
+├── app.js            # Logique SPA (JavaScript Vanilla)
+├── style.css         # Thème Premium
 └── .github/workflows/    # 🤖 Pipeline CI/CD FTP
 ```

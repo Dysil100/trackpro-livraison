@@ -1,6 +1,10 @@
 <?php
 // api/db.php
 $dbPath = __DIR__ . '/../data/trackpro.db';
+$dbDir = dirname($dbPath);
+if (!is_dir($dbDir)) {
+    mkdir($dbDir, 0755, true);
+}
 $dbExists = file_exists($dbPath);
 
 try {
