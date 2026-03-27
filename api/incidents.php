@@ -10,7 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { exit(0); }
 $user = authenticate();
 $method = $_SERVER['REQUEST_METHOD'];
 $requestUri = $_SERVER['REQUEST_URI'];
-$id = preg_match('/incidents\.php\/([a-f0-9\-]{36})/', $requestUri, $matches) ? $matches[1] : ($_GET['id'] ?? null);
+$id = preg_match('/incidents\.php\/([a-zA-Z0-9\-]{32,36})/', $requestUri, $matches) ? $matches[1] : ($_GET['id'] ?? null);
 
 switch ($method) {
     case 'GET':

@@ -32,7 +32,7 @@ try {
             telephone TEXT NOT NULL,
             email TEXT UNIQUE,
             vehicule TEXT,
-            statut TEXT DEFAULT 'disponible' CHECK(statut IN ('disponible', 'en_course', 'indisponible')),
+            statut TEXT DEFAULT 'disponible',
             latitude REAL,
             longitude REAL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -152,6 +152,10 @@ SQL;
         $agentId = bin2hex(random_bytes(16));
         $agentPass = password_hash('agent123', PASSWORD_BCRYPT);
         $stmt->execute([$agentId, 'Agent Dupont', 'agent@tracking.com', $agentPass, 'agent', null]);
+        
+        $clientId = bin2hex(random_bytes(16));
+        $clientPass = password_hash('client123', PASSWORD_BCRYPT);
+        $stmt->execute([$clientId, 'Client Test', 'client@tracking.com', $clientPass, 'client', '+33699887766']);
         
         // Demo Data: Livreurs
         $l1 = bin2hex(random_bytes(16));

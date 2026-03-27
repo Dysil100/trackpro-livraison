@@ -13,6 +13,7 @@
   <!-- Polling AJAX utilisé à la place de Socket.io -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
   <!-- LOGIN PAGE -->
@@ -42,7 +43,18 @@
         </button>
       </form>
       <div class="login-hint">
-        <small>Admin: admin@tracking.com / admin123<br>Agent: agent@tracking.com / agent123</small>
+        <small>Admin: admin@tracking.com / admin123<br>Agent: agent@tracking.com / agent123<br>Client: client@tracking.com / client123</small>
+      </div>
+      <div class="login-quick-btns">
+        <button type="button" class="quick-login-btn" onclick="quickLogin('admin@tracking.com','admin123')">
+          <i class="fas fa-shield-halved"></i> Admin
+        </button>
+        <button type="button" class="quick-login-btn" onclick="quickLogin('agent@tracking.com','agent123')">
+          <i class="fas fa-user-tie"></i> Agent
+        </button>
+        <button type="button" class="quick-login-btn" onclick="quickLogin('client@tracking.com','client123')">
+          <i class="fas fa-user"></i> Client
+        </button>
       </div>
     </div>
   </div>
@@ -65,26 +77,26 @@
         <a href="#" class="nav-item" data-page="colis" id="nav-colis">
           <span class="nav-icon"><i class="fas fa-box"></i></span><span class="nav-text">Colis</span>
         </a>
-        <a href="#" class="nav-item" data-page="livraisons" id="nav-livraisons">
+        <a href="#" class="nav-item agent-only" data-page="livraisons" id="nav-livraisons">
           <span class="nav-icon"><i class="fas fa-truck"></i></span><span class="nav-text">Livraisons</span>
         </a>
-        <a href="#" class="nav-item" data-page="livreurs" id="nav-livreurs">
+        <a href="#" class="nav-item agent-only" data-page="livreurs" id="nav-livreurs">
           <span class="nav-icon"><i class="fas fa-user-tie"></i></span><span class="nav-text">Livreurs</span>
         </a>
-        <a href="#" class="nav-item" data-page="map" id="nav-map">
+        <a href="#" class="nav-item agent-only" data-page="map" id="nav-map">
           <span class="nav-icon"><i class="fas fa-map-location-dot"></i></span><span class="nav-text">Géolocalisation</span>
         </a>
         <a href="#" class="nav-item" data-page="tracking" id="nav-tracking">
           <span class="nav-icon"><i class="fas fa-magnifying-glass-location"></i></span><span class="nav-text">Tracking Public</span>
         </a>
-        <a href="#" class="nav-item" data-page="notifications" id="nav-notifications">
+        <a href="#" class="nav-item agent-only" data-page="notifications" id="nav-notifications">
           <span class="nav-icon"><i class="fas fa-bell"></i></span><span class="nav-text">Notifications</span>
           <span class="badge" id="notif-badge">0</span>
         </a>
-        <a href="#" class="nav-item" data-page="incidents" id="nav-incidents">
+        <a href="#" class="nav-item agent-only" data-page="incidents" id="nav-incidents">
           <span class="nav-icon"><i class="fas fa-triangle-exclamation"></i></span><span class="nav-text">Incidents</span>
         </a>
-        <a href="#" class="nav-item" data-page="reports" id="nav-reports">
+        <a href="#" class="nav-item agent-only" data-page="reports" id="nav-reports">
           <span class="nav-icon"><i class="fas fa-chart-bar"></i></span><span class="nav-text">Rapports</span>
         </a>
         <a href="#" class="nav-item admin-only" data-page="users" id="nav-users">
@@ -100,6 +112,11 @@
           </div>
         </div>
         <button class="btn-logout" id="logout-btn" title="Déconnexion"><i class="fas fa-power-off"></i></button>
+      </div>
+      <div class="sidebar-seed admin-only">
+        <button class="btn btn-sm btn-ghost" onclick="seedTestData()" title="Générer données test">
+          <i class="fas fa-flask"></i><span class="nav-text"> Données test</span>
+        </button>
       </div>
     </aside>
 
@@ -283,8 +300,9 @@
               <label>Date fin</label>
               <input type="date" id="report-to" value="">
             </div>
-            <button class="btn btn-primary" onclick="loadReports()">📊 Générer</button>
-            <button class="btn btn-success" onclick="exportCSV()">⬇️ Export CSV</button>
+            <button class="btn btn-primary" onclick="loadReports()"><i class="fas fa-chart-bar"></i> Générer</button>
+            <button class="btn btn-success" onclick="exportCSV()"><i class="fas fa-file-csv"></i> Export CSV</button>
+            <button class="btn btn-danger" onclick="exportPDF()"><i class="fas fa-file-pdf"></i> Export PDF</button>
           </div>
         </div>
         <div class="chart-card">
@@ -324,7 +342,12 @@
     <div class="modal" id="modal-colis">
       <div class="modal-header">
         <h3 id="colis-modal-title">Nouveau Colis</h3>
-        <button class="modal-close" onclick="closeAllModals()">✕</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-sm btn-ghost" onclick="fillTestData('colis')" title="Remplir avec données test">
+            <i class="fas fa-flask"></i> Test
+          </button>
+          <button class="modal-close" onclick="closeAllModals()">✕</button>
+        </div>
       </div>
       <div class="modal-body">
         <form id="colis-form">
@@ -474,7 +497,12 @@
     <div class="modal" id="modal-livreur">
       <div class="modal-header">
         <h3 id="livreur-modal-title">Nouveau Livreur</h3>
-        <button class="modal-close" onclick="closeAllModals()">✕</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-sm btn-ghost" onclick="fillTestData('livreur')" title="Remplir avec données test">
+            <i class="fas fa-flask"></i> Test
+          </button>
+          <button class="modal-close" onclick="closeAllModals()">✕</button>
+        </div>
       </div>
       <div class="modal-body">
         <input type="hidden" id="f-livreur-id">
@@ -576,7 +604,12 @@
     <div class="modal" id="modal-user">
       <div class="modal-header">
         <h3>Nouvel utilisateur</h3>
-        <button class="modal-close" onclick="closeAllModals()">✕</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-sm btn-ghost" onclick="fillTestData('user')" title="Remplir avec données test">
+            <i class="fas fa-flask"></i> Test
+          </button>
+          <button class="modal-close" onclick="closeAllModals()">✕</button>
+        </div>
       </div>
       <div class="modal-body">
         <div class="form-row">
@@ -612,6 +645,20 @@
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeAllModals()">Fermer</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Custom Confirm Modal -->
+  <div id="modal-confirm" class="modal" style="display:none;max-width:400px">
+    <div class="modal-header">
+      <h3><i class="fas fa-circle-exclamation" style="color:var(--warning)"></i> Confirmation</h3>
+    </div>
+    <div class="modal-body">
+      <p id="confirm-msg" style="font-size:15px;line-height:1.6"></p>
+    </div>
+    <div class="modal-footer">
+      <button id="confirm-no" class="btn btn-ghost"><i class="fas fa-times"></i> Annuler</button>
+      <button id="confirm-yes" class="btn btn-danger"><i class="fas fa-check"></i> Confirmer</button>
     </div>
   </div>
 

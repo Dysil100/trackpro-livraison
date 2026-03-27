@@ -121,6 +121,28 @@ function logout() {
 
 $('logout-btn').addEventListener('click', logout);
 
+// Quick login (one-click per role on login page)
+async function quickLogin(email, password) {
+  $('login-email').value = email;
+  $('login-password').value = password;
+  $('login-btn').disabled = true;
+  $('login-btn').innerHTML = '<span>Connexion...</span>';
+  $('login-error').textContent = '';
+  try {
+    const r = await fetch(`${API}/auth.php?action=login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await r.json();
+    if (!r.ok) { $('login-error').textContent = data.error || 'Erreur'; return; }
+    token = data.token; currentUser = data.user;
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(currentUser));
+    initApp();
+  } catch { $('login-error').textContent = 'Erreur de connexion'; }
+  finally { $('login-btn').disabled = false; $('login-btn').innerHTML = '<span>Se connecter</span>'; }
+}
+
 // ── Init ──────────────────────────────────────────────
 function initApp() {
   const stored = localStorage.getItem('user');
@@ -130,42 +152,46 @@ function initApp() {
   $('app').classList.remove('hidden');
   $('user-name').textContent = currentUser.nom;
   $('user-avatar').textContent = (currentUser.nom || 'U')[0].toUpperCase();
-  $('user-role').textContent = currentUser.role === 'admin' ? 'Administrateur' : currentUser.role === 'agent' ? 'Agent' : 'Client';
+  const roleLabel = { admin: 'Administrateur', agent: 'Agent', client: 'Client' };
+  $('user-role').textContent = roleLabel[currentUser.role] || currentUser.role;
 
-  // Hide admin-only items for non-admin
-  if (currentUser.role !== 'admin') {
-    document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
-  }
+  // Role-based access control
+  applyRoleAccess(currentUser.role);
 
-  // Map Polling (remplace Socket.io)
+  // Map Polling
   if (window.pollingInterval) clearInterval(window.pollingInterval);
   window.pollingInterval = setInterval(async () => {
-    if ($('page-map').classList.contains('active')) {
-      await loadLivreursOnMap();
-    }
+    if ($('page-map') && $('page-map').classList.contains('active')) await loadLivreursOnMap();
   }, 5000);
 
-  // Sidebar toggle
-  $('sidebar-toggle').addEventListener('click', () => {
-    $('sidebar').classList.toggle('collapsed');
-  });
+  $('sidebar-toggle').addEventListener('click', () => $('sidebar').classList.toggle('collapsed'));
 
-  // Navigation
   document.querySelectorAll('.nav-item').forEach(item => {
-    item.addEventListener('click', e => {
-      e.preventDefault();
-      navigate(item.dataset.page);
-    });
+    item.addEventListener('click', e => { e.preventDefault(); navigate(item.dataset.page); });
   });
 
   // Set default report dates
   const today = new Date().toISOString().split('T')[0];
   const monthAgo = new Date(Date.now() - 30*24*60*60*1000).toISOString().split('T')[0];
-  $('report-from').value = monthAgo;
-  $('report-to').value = today;
+  if ($('report-from')) $('report-from').value = monthAgo;
+  if ($('report-to')) $('report-to').value = today;
 
-  navigate('dashboard');
-  loadNotifBadge();
+  // Client sees only tracking by default
+  if (currentUser.role === 'client') {
+    navigate('tracking');
+  } else {
+    navigate('dashboard');
+    loadNotifBadge();
+  }
+}
+
+function applyRoleAccess(role) {
+  if (role !== 'admin') {
+    document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+  }
+  if (role === 'client') {
+    document.querySelectorAll('.agent-only').forEach(el => el.style.display = 'none');
+  }
 }
 
 function navigate(page) {
@@ -459,21 +485,27 @@ async function loadLivraisons() {
 }
 
 async function updateLivraisonStatut(id, statut) {
-  const r = await apiFetch(`/livraisons/${id}`, { method: 'PUT', body: { statut } });
-  if (r && r.ok) { toast('Livraison mise à jour', 'success'); loadLivraisons(); }
-  else toast('Erreur', 'error');
+  const r = await apiFetch(`/livraisons/${id}/statut`, { method: 'PUT', body: { statut } });
+  if (!r) return;
+  const data = await r.json();
+  if (!r.ok) return toast(data.error || 'Erreur mise à jour', 'error');
+  toast('Livraison mise à jour', 'success'); loadLivraisons();
 }
 
 async function openLivraisonModal() {
-  // Load available colis (not yet in delivery)
-  const rc = await apiFetch('/colis?statut=enregistre&limit=100');
-  const colisData = rc && rc.ok ? (await rc.json()).colis : [];
+  // Load all colis without an active livraison
+  const rc = await apiFetch('/colis?limit=200');
+  const allColis = rc && rc.ok ? (await rc.json()).colis : [];
+  // Filter: enregistre or en_transit (not already in active delivery)
+  const colisData = allColis.filter(c => ['enregistre','en_transit'].includes(c.statut));
   const rl = await apiFetch('/livreurs');
   const livreursData = rl && rl.ok ? await rl.json() : [];
-  $('f-liv-colis').innerHTML = colisData.map(c => `<option value="${c.id}">${c.numero_suivi} — ${c.dest_nom||''}</option>`).join('') || '<option value="">Aucun colis disponible</option>';
-  $('f-liv-livreur').innerHTML = '<option value="">— Non affecté —</option>' + livreursData.filter(l => l.statut === 'disponible').map(l => `<option value="${l.id}">${l.nom} (${l.vehicule||''})</option>`).join('');
-  const now = new Date(); now.setHours(now.getHours() + 1);
+  $('f-liv-colis').innerHTML = colisData.map(c => `<option value="${c.id}">${c.numero_suivi} — ${c.dest_nom||''} (${c.statut})</option>`).join('') || '<option value="">Aucun colis disponible</option>';
+  $('f-liv-livreur').innerHTML = '<option value="">— Non affecté —</option>' + livreursData.filter(l => l.statut !== 'inactif').map(l => `<option value="${l.id}">${l.nom} — ${l.statut === 'disponible' ? '✓ Disponible' : '⚠ En livraison'} (${l.vehicule||''})</option>`).join('');
+  const now = new Date(); now.setHours(now.getHours() + 2);
   $('f-liv-date').value = now.toISOString().slice(0,16);
+  $('f-liv-adresse').value = '';
+  $('f-liv-notes').value = '';
   showModal('modal-livraison');
 }
 
@@ -618,10 +650,13 @@ async function saveLivreur() {
 }
 
 async function deleteLivreur(id) {
-  if (!confirm('Supprimer ce livreur ?')) return;
+  const ok = await confirmDialog('Supprimer ce livreur définitivement ?');
+  if (!ok) return;
   const r = await apiFetch(`/livreurs/${id}`, { method: 'DELETE' });
-  if (r && r.ok) { toast('Livreur supprimé', 'success'); loadLivreurs(); }
-  else toast('Erreur', 'error');
+  if (!r) return;
+  const data = await r.json();
+  if (!r.ok) return toast(data.error || 'Erreur suppression', 'error');
+  toast('Livreur supprimé', 'success'); loadLivreurs();
 }
 
 // ── MAP ───────────────────────────────────────────────
@@ -880,23 +915,18 @@ async function exportCSV() {
   const from = $('report-from').value;
   const to = $('report-to').value;
   const r = await apiFetch(`/reports/livraisons?from=${from}&to=${to}`);
-  if (!r || !r.ok) return toast('Erreur lors de l\\'exportation', 'error');
+  if (!r || !r.ok) return toast('Erreur exportation CSV', 'error');
   const data = await r.json();
   if (!data || data.length === 0) return toast('Aucune donnée à exporter', 'info');
-  
-  const headers = Object.keys(data[0]).join(',');
-  const rows = data.map(obj => Object.values(obj).map(v => `"${(v||'').toString().replace(/"/g, '""')}"`).join(',')).join('\\n');
-  const csv = `${headers}\\n${rows}`;
-  
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const head = Object.keys(data[0]).join(',');
+  const rows = data.map(obj => Object.values(obj).map(v => `"${(v || '').toString().replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([head + '\n' + rows], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  link.setAttribute('download', `export_livraisons_${from}_${to}.csv`);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  const a = document.createElement('a');
+  a.href = url; a.download = `export_${from}_${to}.csv`; a.style.display = 'none';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Export CSV téléchargé ✓', 'success');
 }
 
 // ── USERS ─────────────────────────────────────────────
@@ -939,9 +969,13 @@ async function saveUser() {
 }
 
 async function deactivateUser(id) {
-  if (!confirm('Désactiver cet utilisateur ?')) return;
+  const ok = await confirmDialog('Désactiver cet utilisateur ?');
+  if (!ok) return;
   const r = await apiFetch(`/users/${id}/actif`, { method: 'PUT', body: { actif: 0 } });
-  if (r && r.ok) { toast('Utilisateur désactivé', 'success'); loadUsers(); }
+  if (!r) return;
+  const data = await r.json();
+  if (!r.ok) return toast(data.error || 'Erreur', 'error');
+  toast('Utilisateur désactivé', 'success'); loadUsers();
 }
 
 // ── MODAL HELPERS ─────────────────────────────────────
@@ -963,6 +997,124 @@ function closeAllModals() {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeAllModals();
 });
+
+// ── CONFIRM DIALOG ────────────────────────────────────
+function confirmDialog(msg) {
+  return new Promise(resolve => {
+    $('confirm-msg').textContent = msg;
+    $('modal-confirm').style.display = 'flex';
+    $('modal-overlay').classList.remove('hidden');
+    const yes = $('confirm-yes');
+    const no = $('confirm-no');
+    const cleanup = (result) => {
+      $('modal-confirm').style.display = 'none';
+      $('modal-overlay').classList.add('hidden');
+      yes.removeEventListener('click', onYes);
+      no.removeEventListener('click', onNo);
+      resolve(result);
+    };
+    const onYes = () => cleanup(true);
+    const onNo = () => cleanup(false);
+    yes.addEventListener('click', onYes);
+    no.addEventListener('click', onNo);
+  });
+}
+
+// ── TEST DATA AUTO-FILL ───────────────────────────────
+const testData = {
+  colis: { 'f-exp-nom': 'Amazon France', 'f-exp-tel': '+33800001234', 'f-exp-email': 'logistique@amazon.fr', 'f-exp-adresse': '12 Rue Rivoli', 'f-exp-ville': 'Paris', 'f-dest-nom': 'Alice Fontaine', 'f-dest-tel': '+33611223344', 'f-dest-email': 'alice@email.com', 'f-dest-adresse': '5 Rue de la Paix', 'f-dest-ville': 'Lyon', 'f-poids': '2.5', 'f-valeur': '149.99', 'f-description': 'Colis test — écran 24 pouces', 'f-notes': 'Appeler avant livraison' },
+  livreur: { 'f-livreur-nom': 'Test Livreur', 'f-livreur-tel': '+33600112233', 'f-livreur-email': 'test.livreur@mail.fr', 'f-livreur-vehicule': 'Moto' },
+  incident: { 'f-inc-desc': 'Colis endommagé lors du transport — coin froissé' },
+  user: { 'f-user-nom': 'Test Agent', 'f-user-email': 'agent.test@tracking.com', 'f-user-password': 'agent1234', 'f-user-tel': '+33622334455' }
+};
+
+function fillTestData(type) {
+  const d = testData[type];
+  if (!d) return;
+  Object.entries(d).forEach(([id, val]) => { if ($(id)) $(id).value = val; });
+  toast('Données de test remplies ✓', 'info');
+}
+
+// ── PDF EXPORT ────────────────────────────────────────
+async function exportPDF() {
+  const from = $('report-from').value;
+  const to = $('report-to').value;
+  const [r1, r2] = await Promise.all([apiFetch('/reports/stats'), apiFetch(`/reports/livraisons?from=${from}&to=${to}`)]);
+  if (!r1 || !r1.ok) return toast('Erreur chargement données', 'error');
+  const stats = await r1.json();
+  const livData = r2 && r2.ok ? await r2.json() : [];
+
+  if (!window.jspdf) return toast('jsPDF non chargé', 'error');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  // Header
+  doc.setFillColor(99, 102, 241);
+  doc.rect(0, 0, 210, 30, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(20); doc.setFont('helvetica', 'bold');
+  doc.text('TRACKPRO — Rapport de livraisons', 15, 18);
+  doc.setFontSize(10); doc.setFont('helvetica', 'normal');
+  doc.text(`Période: ${from} → ${to}  |  Généré le ${new Date().toLocaleDateString('fr-FR')}`, 15, 25);
+
+  // Monthly stats summary
+  doc.setTextColor(30, 41, 59);
+  doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+  doc.text('Évolution mensuelle', 15, 42);
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+  let y = 50;
+  const evo = stats.evolution_mensuelle || [];
+  evo.forEach(m => {
+    doc.text(`${m.mois}: ${m.total} colis — ${m.livrees || 0} livrés — ${m.echecs || 0} échecs`, 15, y);
+    y += 6;
+  });
+
+  // Livreur perf table
+  y += 5;
+  doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+  doc.text('Performance des livreurs', 15, y); y += 8;
+  doc.setFontSize(9);
+  const perf = stats.performance_livreurs || [];
+  doc.setFont('helvetica', 'bold');
+  ['Livreur', 'Total', 'Livrés', 'Échecs', 'Taux'].forEach((h, i) => doc.text(h, 15 + i * 38, y));
+  y += 6; doc.setFont('helvetica', 'normal');
+  perf.forEach(l => {
+    const tot = (parseInt(l.livrees)||0) + (parseInt(l.echecs)||0);
+    const taux = tot > 0 ? ((parseInt(l.livrees)||0)/tot*100).toFixed(0) : 0;
+    [l.nom, tot, l.livrees||0, l.echecs||0, taux + '%'].forEach((v, i) => doc.text(String(v), 15 + i * 38, y));
+    y += 6;
+    if (y > 270) { doc.addPage(); y = 20; }
+  });
+
+  // Livraison list
+  if (livData.length > 0) {
+    y += 8;
+    if (y > 250) { doc.addPage(); y = 20; }
+    doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+    doc.text(`Détail des livraisons (${livData.length})`, 15, y); y += 8;
+    doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+    livData.slice(0, 40).forEach(lv => {
+      const line = `${lv.numero_suivi} | ${lv.destinataire||'—'} | ${lv.ville_arrivee||'—'} | ${lv.statut_livraison||'—'} | ${lv.livreur||'—'}`;
+      doc.text(line, 15, y); y += 5;
+      if (y > 275) { doc.addPage(); y = 20; }
+    });
+  }
+
+  doc.save(`trackpro_rapport_${from}_${to}.pdf`);
+  toast('Rapport PDF téléchargé ✓', 'success');
+}
+
+// ── SEED TEST DATA ────────────────────────────────────
+async function seedTestData() {
+  const ok = await confirmDialog('Générer des données de test ? (Opération idempotente)');
+  if (!ok) return;
+  const r = await apiFetch('/seed', { method: 'POST', body: {} });
+  if (!r) return;
+  const data = await r.json();
+  if (!r.ok) return toast(data.error || 'Erreur seed', 'error');
+  toast(`✅ Données test générées: ${data.counts?.colis || 0} colis, ${data.counts?.livreurs || 0} livreurs`, 'success');
+  loadDashboard();
+}
 
 // ── INIT ──────────────────────────────────────────────
 if (token) {
