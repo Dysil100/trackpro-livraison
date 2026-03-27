@@ -821,21 +821,20 @@ async function saveIncident() {
 }
 
 async function resolveIncident(id) {
-  const r = await apiFetch(`/incidents/${id}`, { method: 'PUT', body: { statut: 'resolu' } });
+  const r = await apiFetch(`/incidents/${id}/statut`, { method: 'PUT', body: { statut: 'resolu' } });
   if (r && r.ok) { toast('Incident résolu', 'success'); loadIncidents(); }
 }
 
-// ── REPORTS ───────────────────────────────────────────
 async function loadReports() {
   const from = $('report-from').value;
   const to = $('report-to').value;
-  const [rStats, rLivreurs] = await Promise.all([
-    apiFetch('/reports/stats'),
-    apiFetch(`/reports/livreurs?from=${from}&to=${to}`)
-  ]);
-  // Monthly chart
+  const rStats = await apiFetch('/reports/stats');
+  
   if (rStats && rStats.ok) {
-    const monthly = await rStats.json();
+    const data = await rStats.json();
+    const monthly = data.evolution_mensuelle || [];
+    
+    // Monthly chart
     if (chartMonthly) chartMonthly.destroy();
     const ctx = $('chart-monthly').getContext('2d');
     chartMonthly = new Chart(ctx, {
@@ -843,41 +842,61 @@ async function loadReports() {
       data: {
         labels: monthly.map(m => m.mois),
         datasets: [
-          { label: 'Total', data: monthly.map(m => m.total), backgroundColor: 'rgba(99,102,241,0.7)', borderRadius: 6 },
-          { label: 'Livrés', data: monthly.map(m => m.livres), backgroundColor: 'rgba(16,185,129,0.7)', borderRadius: 6 },
-          { label: 'Échecs', data: monthly.map(m => m.echecs), backgroundColor: 'rgba(239,68,68,0.7)', borderRadius: 6 }
+          { label: 'Total', data: monthly.map(m => m.total || 0), backgroundColor: 'rgba(99,102,241,0.7)', borderRadius: 6 },
+          { label: 'Livrés', data: monthly.map(m => m.livrees || 0), backgroundColor: 'rgba(16,185,129,0.7)', borderRadius: 6 },
+          { label: 'Échecs', data: monthly.map(m => m.echecs || 0), backgroundColor: 'rgba(239,68,68,0.7)', borderRadius: 6 }
         ]
       },
       options: { responsive: true, plugins: { legend: { labels: { color: '#94a3b8' } } }, scales: { x: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } }, y: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } } } }
     });
-  }
-  // Livreur perf table
-  if (rLivreurs && rLivreurs.ok) {
-    const livData = await rLivreurs.json();
-    $('livreurs-perf-tbody').innerHTML = livData.data.map(l => `
-      <tr>
-        <td><strong>${l.nom}</strong><br><small style="color:var(--text-muted)">${l.vehicule||''}</small></td>
-        <td>${l.total_livraisons}</td>
-        <td style="color:var(--success)">${l.livrees}</td>
-        <td style="color:var(--danger)">${l.echecs}</td>
-        <td>
-          <div style="display:flex;align-items:center;gap:8px">
-            <div style="flex:1;background:var(--dark3);border-radius:20px;height:6px">
-              <div style="background:var(--success);height:100%;border-radius:20px;width:${l.taux_reussite||0}%"></div>
+
+    // Livreur perf table
+    const livData = data.performance_livreurs || [];
+    $('livreurs-perf-tbody').innerHTML = livData.map(l => {
+      const total = (parseInt(l.livrees) || 0) + (parseInt(l.echecs) || 0) + (parseInt(l.en_cours) || 0); // Need total for calc if not provided
+      const taux = total > 0 ? ((parseInt(l.livrees) || 0) / total * 100) : 0;
+      return `
+        <tr>
+          <td><strong>${l.nom}</strong><br><small style="color:var(--text-muted)">${l.vehicule||''}</small></td>
+          <td>${total}</td>
+          <td style="color:var(--success)">${l.livrees||0}</td>
+          <td style="color:var(--danger)">${l.echecs||0}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="flex:1;background:var(--dark3);border-radius:20px;height:6px">
+                <div style="background:var(--success);height:100%;border-radius:20px;width:${Math.min(taux, 100)}%"></div>
+              </div>
+              <span>${taux.toFixed(1)}%</span>
             </div>
-            <span>${parseFloat(l.taux_reussite||0).toFixed(1)}%</span>
-          </div>
-        </td>
-        <td>${l.temps_moyen_h ? parseFloat(l.temps_moyen_h).toFixed(1) + 'h' : '—'}</td>
-      </tr>
-    `).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">Aucune donnée</td></tr>';
+          </td>
+          <td>${l.temps_moyen_h ? parseFloat(l.temps_moyen_h).toFixed(1) + 'h' : '—'}</td>
+        </tr>
+      `;
+    }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">Aucune donnée</td></tr>';
   }
 }
 
 async function exportCSV() {
   const from = $('report-from').value;
   const to = $('report-to').value;
-  window.location.href = `/api/reports/livraisons?format=csv&from=${from}&to=${to}`;
+  const r = await apiFetch(`/reports/livraisons?from=${from}&to=${to}`);
+  if (!r || !r.ok) return toast('Erreur lors de l\\'exportation', 'error');
+  const data = await r.json();
+  if (!data || data.length === 0) return toast('Aucune donnée à exporter', 'info');
+  
+  const headers = Object.keys(data[0]).join(',');
+  const rows = data.map(obj => Object.values(obj).map(v => `"${(v||'').toString().replace(/"/g, '""')}"`).join(',')).join('\\n');
+  const csv = `${headers}\\n${rows}`;
+  
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', `export_livraisons_${from}_${to}.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 // ── USERS ─────────────────────────────────────────────
@@ -910,7 +929,7 @@ async function saveUser() {
     telephone: $('f-user-tel').value
   };
   if (!body.nom || !body.email || !body.password) return toast('Champs obligatoires manquants', 'error');
-  const r = await apiFetch('/auth/register', { method: 'POST', body });
+  const r = await apiFetch('/users', { method: 'POST', body });
   if (!r) return;
   const data = await r.json();
   if (!r.ok) return toast(data.error || 'Erreur', 'error');
@@ -921,7 +940,7 @@ async function saveUser() {
 
 async function deactivateUser(id) {
   if (!confirm('Désactiver cet utilisateur ?')) return;
-  const r = await apiFetch(`/users/${id}`, { method: 'DELETE' });
+  const r = await apiFetch(`/users/${id}/actif`, { method: 'PUT', body: { actif: 0 } });
   if (r && r.ok) { toast('Utilisateur désactivé', 'success'); loadUsers(); }
 }
 
